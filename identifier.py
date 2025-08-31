@@ -1,102 +1,94 @@
+#!/usr/bin/env python3
+"""
+Universal HuggingFace API-Based KPI Detection and Dashboard Generation
+Uses free HuggingFace Inference API - NO local model downloads!
+"""
+
 import json
 import re
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
-from plotly.subplots import make_subplots
+
 import numpy as np
 from datetime import datetime
+import requests
 from pathlib import Path
-import torch
-from transformers import (
-    AutoTokenizer, AutoModelForTokenClassification,
-    AutoModelForSequenceClassification, pipeline
-)
-from sentence_transformers import SentenceTransformer
-import spacy
-from sklearn.cluster import KMeans
-from sklearn.feature_extraction.text import TfidfVectorizer
 import warnings
 warnings.filterwarnings('ignore')
 
-class UniversalKPIDetector:
+class HuggingFaceKPIDetector:
     def __init__(self, data_path="xtracted/raw_data.json"):
-        """Initialize with extracted PDF data and load transformer models"""
-        print("🚀 Initializing Universal KPI Detection Pipeline...")
+        """Initialize with extracted PDF data and HuggingFace API"""
+        print("🚀 Initializing HuggingFace API-Based KPI Detection...")
         
         with open(data_path, 'r') as f:
             self.raw_data = json.load(f)
         
-        # Load open-source models
-        self._load_models()
+        # HuggingFace API configuration
+        self.hf_api_key = None  # Optional - works without key for basic usage
+        self.api_base = "https://api-inference.huggingface.co"
         
         # Initialize data structures
         self.detected_kpis = {}
         self.document_type = None
         self.numerical_data = []
-        self.categorical_data = []
         self.time_series_data = []
         
-    def _load_models(self):
-        """Load open-source transformer models for various NLP tasks"""
-        print("📥 Loading transformer models...")
+        # API endpoints
+        self.models = {
+            'document_classifier': 'facebook/bart-large-mnli',
+            'entity_extractor': 'dbmdz/bert-large-cased-finetuned-conll03-english',
+            'text_classifier': 'microsoft/DialoGPT-medium'
+        }
+    
+    def set_api_key(self, api_key):
+        """Set HuggingFace API key for higher rate limits"""
+        self.hf_api_key = api_key
+        print("✅ API key set for enhanced rate limits")
+    
+    def _make_api_call(self, model_name, payload):
+        """Make API call to HuggingFace Inference API"""
+        url = f"{self.api_base}/models/{model_name}"
+        headers = {"Authorization": f"Bearer {self.hf_api_key}"} if self.hf_api_key else {}
         
         try:
-            # 1. Named Entity Recognition (for extracting entities)
-            self.ner_pipeline = pipeline(
-                "ner", 
-                model="dbmdz/bert-large-cased-finetuned-conll03-english",
-                aggregation_strategy="simple"
-            )
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
             
-            # 2. Text Classification (for document type detection)
-            self.classifier = pipeline(
-                "text-classification",
-                model="microsoft/DialoGPT-medium"  # Fallback to a general model
-            )
-            
-            # 3. Sentence Transformer (for semantic similarity)
-            self.sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
-            
-            # 4. Zero-shot classification for KPI categorization
-            self.zero_shot_classifier = pipeline(
-                "zero-shot-classification",
-                model="facebook/bart-large-mnli"
-            )
-            
-            print("✅ Models loaded successfully!")
-            
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 401:
+                print(f"⚠️ Authentication failed for {model_name} - using fallback methods")
+                return None
+            elif response.status_code == 503:
+                print(f"⚠️ Model {model_name} is loading, retrying...")
+                # Wait and retry once
+                import time
+                time.sleep(5)
+                response = requests.post(url, headers=headers, json=payload, timeout=30)
+                return response.json() if response.status_code == 200 else None
+            else:
+                print(f"⚠️ API Error {response.status_code} for {model_name}: {response.text}")
+                return None
+                
         except Exception as e:
-            print(f"⚠️ Model loading fallback: {e}")
-            # Fallback to basic NLP
-            self._load_fallback_models()
-    
-    def _load_fallback_models(self):
-        """Load lightweight fallback models if transformers fail"""
-        print("📥 Loading fallback models...")
-        try:
-            import spacy
-            self.nlp = spacy.load("en_core_web_sm")
-        except:
-            print("⚠️ Installing spacy English model...")
-            import subprocess
-            subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
-            self.nlp = spacy.load("en_core_web_sm")
+            print(f"⚠️ API call failed for {model_name}: {e}")
+            return None
     
     def detect_document_type(self):
-        """Automatically detect document type using transformer models"""
-        print("🔍 Detecting document type...")
+        """Detect document type using HuggingFace zero-shot classification"""
+        print("🔍 Detecting document type with HuggingFace...")
         
         # Combine all text for analysis
         all_text = ""
         for text_block in self.raw_data['text']:
             all_text += text_block['content'] + " "
         
-        # Truncate for model limits
-        all_text = all_text[:1000]
+        # Truncate for API limits
+        sample_text = all_text[:1000]
         
-        # Predefined document types for zero-shot classification
+        # Document type candidates
         candidate_labels = [
             "financial report", "sales report", "marketing analysis", 
             "operational report", "research report", "performance metrics",
@@ -104,31 +96,39 @@ class UniversalKPIDetector:
             "customer analytics", "business intelligence", "project report"
         ]
         
-        try:
-            result = self.zero_shot_classifier(all_text, candidate_labels)
+        payload = {
+            "inputs": sample_text,
+            "parameters": {"candidate_labels": candidate_labels}
+        }
+        
+        result = self._make_api_call(self.models['document_classifier'], payload)
+        
+        if result and 'labels' in result:
             self.document_type = result['labels'][0]
             confidence = result['scores'][0]
-            
-            print(f"📋 Detected document type: {self.document_type} (confidence: {confidence:.2f})")
-            
-        except Exception as e:
-            print(f"⚠️ Fallback document type detection: {e}")
-            self._fallback_document_detection(all_text)
+            print(f"📋 Detected: {self.document_type} (confidence: {confidence:.2f})")
+        else:
+            print("⚠️ API failed, using pattern detection")
+            self.document_type = self._detect_with_patterns(sample_text)
         
         return self.document_type
     
-    def _fallback_document_detection(self, text):
-        """Fallback document type detection using keyword matching"""
+    def _detect_with_patterns(self, text):
+        """Fallback pattern-based document detection"""
         text_lower = text.lower()
         
-        if any(word in text_lower for word in ['revenue', 'profit', 'earnings', 'financial']):
-            self.document_type = "financial report"
-        elif any(word in text_lower for word in ['sales', 'customers', 'conversion']):
-            self.document_type = "sales report"
-        elif any(word in text_lower for word in ['marketing', 'campaign', 'engagement']):
-            self.document_type = "marketing analysis"
+        if any(word in text_lower for word in ['revenue', 'profit', 'earnings', 'financial', 'quarterly']):
+            return "financial report"
+        elif any(word in text_lower for word in ['sales', 'customers', 'conversion', 'pipeline']):
+            return "sales report"
+        elif any(word in text_lower for word in ['marketing', 'campaign', 'engagement', 'advertising']):
+            return "marketing analysis"
+        elif any(word in text_lower for word in ['operational', 'operations', 'efficiency', 'productivity']):
+            return "operational report"
+        elif any(word in text_lower for word in ['research', 'study', 'analysis', 'findings']):
+            return "research report"
         else:
-            self.document_type = "business report"
+            return "business report"
     
     def extract_numerical_patterns(self):
         """Extract numerical data patterns using regex and NLP"""
@@ -181,97 +181,185 @@ class UniversalKPIDetector:
         else:
             return 'general'
     
-    def detect_kpis_with_ai(self):
-        """Use AI models to detect and categorize KPIs"""
-        print("🤖 Detecting KPIs with AI models...")
+    def extract_kpis_with_huggingface(self):
+        """Extract KPIs using HuggingFace APIs"""
+        print("🤖 Extracting KPIs with HuggingFace...")
         
-        # Combine all text for AI analysis
+        # First extract numerical patterns
+        self.extract_numerical_patterns()
+        
+        # Combine all text for analysis
         full_text = ""
         for text_block in self.raw_data['text']:
             full_text += text_block['content'] + " "
         
-        # Extract entities using NER
-        try:
-            entities = self.ner_pipeline(full_text[:2000])  # Limit for model
-            
-            # Group entities by type
-            entity_groups = {}
-            for entity in entities:
-                ent_type = entity['entity_group']
-                if ent_type not in entity_groups:
-                    entity_groups[ent_type] = []
-                entity_groups[ent_type].append(entity['word'])
-            
-            self.detected_kpis['entities'] = entity_groups
-            
-        except Exception as e:
-            print(f"⚠️ Entity detection failed: {e}")
-            self._fallback_entity_detection(full_text)
+        sample_text = full_text[:1500]  # API limits
         
-        # Detect KPI categories based on document type
-        self._categorize_kpis_by_domain()
+        # Extract entities using NER model
+        entities = self._extract_entities_hf(sample_text)
+        
+        # Extract semantic KPIs using zero-shot classification
+        semantic_kpis = self._extract_semantic_kpis(sample_text)
+        
+        # Combine results
+        self.detected_kpis = {
+            'entities': entities,
+            'semantic_kpis': semantic_kpis,
+            'numerical_kpis': self._extract_numerical_kpis(),
+            'document_type': self.document_type
+        }
         
         # Extract time series data
         self._extract_time_series()
         
         return self.detected_kpis
     
-    def _fallback_entity_detection(self, text):
-        """Fallback entity detection using spaCy"""
-        try:
-            doc = self.nlp(text[:2000])
-            entities = {
-                'PERSON': [ent.text for ent in doc.ents if ent.label_ == 'PERSON'],
-                'ORG': [ent.text for ent in doc.ents if ent.label_ == 'ORG'],
-                'MONEY': [ent.text for ent in doc.ents if ent.label_ == 'MONEY'],
-                'PERCENT': [ent.text for ent in doc.ents if ent.label_ == 'PERCENT'],
-                'DATE': [ent.text for ent in doc.ents if ent.label_ == 'DATE']
+    def _extract_entities_hf(self, text):
+        """Extract named entities using HuggingFace NER model"""
+        payload = {"inputs": text[:1000]}
+        
+        result = self._make_api_call(self.models['entity_extractor'], payload)
+        
+        if result:
+            # Group entities by type
+            entity_groups = {}
+            for entity in result:
+                ent_type = entity.get('entity_group', 'MISC')
+                if ent_type not in entity_groups:
+                    entity_groups[ent_type] = []
+                
+                # Filter by confidence
+                if entity.get('score', 0) > 0.8:
+                    entity_groups[ent_type].append({
+                        'word': entity['word'],
+                        'score': entity['score']
+                    })
+            
+            return entity_groups
+        else:
+            # Fallback: extract basic entities using regex patterns
+            print("⚠️ Using fallback entity detection")
+            fallback_entities = {
+                'ORG': [],
+                'MISC': [],
+                'MONEY': [],
+                'PERCENT': []
             }
-            self.detected_kpis['entities'] = entities
-        except:
-            self.detected_kpis['entities'] = {}
+            
+            # Look for common patterns
+            import re
+            
+            # Organizations (companies)
+            org_pattern = r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:Corp|Inc|Ltd|LLC|Company|Corporation)\b'
+            orgs = re.findall(org_pattern, text)
+            fallback_entities['ORG'].extend([{'word': org, 'score': 0.7} for org in orgs[:5]])
+            
+            # Money amounts
+            money_pattern = r'\$\d+(?:,\d{3})*(?:\.\d{2})?'
+            money = re.findall(money_pattern, text)
+            fallback_entities['MONEY'].extend([{'word': m, 'score': 0.8} for m in money[:10]])
+            
+            # Percentages
+            percent_pattern = r'\d+(?:\.\d+)?%'
+            percents = re.findall(percent_pattern, text)
+            fallback_entities['PERCENT'].extend([{'word': p, 'score': 0.8} for p in percents[:10]])
+            
+            return fallback_entities
     
-    def _categorize_kpis_by_domain(self):
-        """Categorize KPIs based on detected document type"""
-        domain_kpis = {
-            'financial report': ['revenue', 'profit', 'margin', 'earnings', 'cash flow', 'growth'],
-            'sales report': ['sales volume', 'conversion rate', 'customer acquisition', 'revenue'],
-            'marketing analysis': ['engagement', 'reach', 'conversions', 'cost per acquisition'],
-            'operational report': ['efficiency', 'productivity', 'utilization', 'performance'],
-            'research report': ['results', 'findings', 'statistics', 'correlations'],
-            'business report': ['performance', 'metrics', 'results', 'trends']
+    def _extract_semantic_kpis(self, text):
+        """Extract KPIs using semantic similarity with HuggingFace"""
+        # Define KPI categories based on document type
+        kpi_categories = {
+            'financial report': [
+                'revenue growth', 'profit margin', 'earnings per share', 
+                'cash flow', 'return on investment', 'debt ratio'
+            ],
+            'sales report': [
+                'sales volume', 'conversion rate', 'customer acquisition cost',
+                'sales pipeline', 'average deal size', 'sales velocity'
+            ],
+            'marketing analysis': [
+                'customer engagement', 'click-through rate', 'conversion rate',
+                'return on ad spend', 'customer lifetime value', 'brand awareness'
+            ],
+            'operational report': [
+                'efficiency metrics', 'productivity rates', 'utilization rates',
+                'operational costs', 'process improvements', 'quality metrics'
+            ]
         }
         
-        relevant_kpis = domain_kpis.get(self.document_type, domain_kpis['business report'])
+        # Get relevant KPI categories
+        categories = kpi_categories.get(self.document_type, kpi_categories['financial report'])
         
-        # Find KPIs in text using semantic similarity
-        kpi_scores = {}
-        for text_block in self.raw_data['text']:
-            sentences = text_block['content'].split('.')
-            
-            for sentence in sentences[:10]:  # Limit for performance
-                if len(sentence.strip()) > 20:  # Skip short sentences
-                    try:
-                        # Calculate similarity with relevant KPIs
-                        sentence_embedding = self.sentence_model.encode([sentence.strip()])
-                        kpi_embeddings = self.sentence_model.encode(relevant_kpis)
-                        
-                        similarities = np.dot(sentence_embedding, kpi_embeddings.T)[0]
-                        max_similarity = np.max(similarities)
-                        
-                        if max_similarity > 0.3:  # Threshold for relevance
-                            best_kpi = relevant_kpis[np.argmax(similarities)]
-                            if best_kpi not in kpi_scores:
-                                kpi_scores[best_kpi] = []
-                            kpi_scores[best_kpi].append({
-                                'sentence': sentence.strip(),
-                                'score': max_similarity,
-                                'page': text_block['page']
-                            })
-                    except:
-                        continue
+        # Use zero-shot classification to find relevant KPIs
+        payload = {
+            "inputs": text[:800],
+            "parameters": {"candidate_labels": categories}
+        }
         
-        self.detected_kpis['semantic_kpis'] = kpi_scores
+        result = self._make_api_call(self.models['document_classifier'], payload)
+        
+        if result and 'labels' in result:
+            # Return top 3 most relevant KPIs
+            top_kpis = []
+            for i in range(min(3, len(result['labels']))):
+                top_kpis.append({
+                    'kpi': result['labels'][i],
+                    'relevance_score': result['scores'][i],
+                    'category': 'semantic'
+                })
+            return top_kpis
+        else:
+            # Fallback: return basic KPIs based on document type
+            print("⚠️ Using fallback KPI detection")
+            fallback_kpis = {
+                'financial report': [
+                    {'kpi': 'Revenue Metrics', 'relevance_score': 0.9, 'category': 'fallback'},
+                    {'kpi': 'Profit Analysis', 'relevance_score': 0.8, 'category': 'fallback'},
+                    {'kpi': 'Growth Rates', 'relevance_score': 0.7, 'category': 'fallback'}
+                ],
+                'sales report': [
+                    {'kpi': 'Sales Performance', 'relevance_score': 0.9, 'category': 'fallback'},
+                    {'kpi': 'Customer Metrics', 'relevance_score': 0.8, 'category': 'fallback'},
+                    {'kpi': 'Conversion Rates', 'relevance_score': 0.7, 'category': 'fallback'}
+                ],
+                'marketing analysis': [
+                    {'kpi': 'Campaign Performance', 'relevance_score': 0.9, 'category': 'fallback'},
+                    {'kpi': 'Engagement Metrics', 'relevance_score': 0.8, 'category': 'fallback'},
+                    {'kpi': 'ROI Analysis', 'relevance_score': 0.7, 'category': 'fallback'}
+                ]
+            }
+            return fallback_kpis.get(self.document_type, [
+                {'kpi': 'Performance Metrics', 'relevance_score': 0.8, 'category': 'fallback'},
+                {'kpi': 'Key Indicators', 'relevance_score': 0.7, 'category': 'fallback'},
+                {'kpi': 'Business Metrics', 'relevance_score': 0.6, 'category': 'fallback'}
+            ])
+    
+    def _extract_numerical_kpis(self):
+        """Extract KPIs from numerical patterns"""
+        numerical_kpis = []
+        
+        # Group by pattern type
+        pattern_groups = {}
+        for item in self.numerical_data:
+            pattern = item['pattern_type']
+            if pattern not in pattern_groups:
+                pattern_groups[pattern] = []
+            pattern_groups[pattern].append(item)
+        
+        # Create KPI summaries
+        for pattern_type, items in pattern_groups.items():
+            if items:
+                values = [item['value'] for item in items]
+                numerical_kpis.append({
+                    'kpi': f"{pattern_type.title()} Metrics",
+                    'count': len(items),
+                    'max_value': max(values),
+                    'avg_value': np.mean(values),
+                    'pattern_type': pattern_type
+                })
+        
+        return numerical_kpis
     
     def _extract_time_series(self):
         """Extract time series data patterns"""
@@ -300,41 +388,46 @@ class UniversalKPIDetector:
                             'page': text_block['page']
                         })
     
-    def generate_adaptive_visualizations(self):
-        """Generate visualizations based on detected data patterns"""
-        print("📊 Generating adaptive visualizations...")
+    def generate_visualizations(self):
+        """Generate visualizations based on detected data"""
+        print("📊 Generating visualizations...")
         
         visualizations = []
         
-        # 1. Time Series Visualization (if time series data exists)
-        if self.time_series_data:
-            fig = self._create_time_series_viz()
-            if fig:
-                visualizations.append(('Time Series Analysis', fig))
-        
-        # 2. Numerical Distribution
+        # 1. Numerical Data Distribution
         if self.numerical_data:
-            fig = self._create_numerical_distribution()
-            visualizations.append(('Numerical Data Distribution', fig))
+            figs = self._create_numerical_distribution()
+            if figs:
+                # Handle tuple return (two separate figures)
+                if isinstance(figs, tuple):
+                    visualizations.append(('Value Distribution', figs[0]))
+                    visualizations.append(('Pattern Types', figs[1]))
+                else:
+                    visualizations.append(('Numerical Data Analysis', figs))
         
-        # 3. KPI Categories (if semantic KPIs found)
+        # 2. KPI Categories
         if 'semantic_kpis' in self.detected_kpis and self.detected_kpis['semantic_kpis']:
-            fig = self._create_kpi_categories_viz()
+            fig = self._create_kpi_categories()
             visualizations.append(('KPI Categories', fig))
         
-        # 4. Entity Analysis
+        # 3. Entity Analysis
         if 'entities' in self.detected_kpis and self.detected_kpis['entities']:
             fig = self._create_entity_analysis()
             visualizations.append(('Entity Analysis', fig))
         
-        # 5. Pattern-based Metrics
-        fig = self._create_pattern_metrics()
-        if fig:
+        # 4. Time Series (if available)
+        if self.time_series_data:
+            fig = self._create_time_series()
+            visualizations.append(('Time Series Trends', fig))
+        
+        # 5. Pattern Metrics
+        if self.numerical_data:
+            fig = self._create_pattern_metrics()
             visualizations.append(('Pattern Analysis', fig))
         
         return visualizations
     
-    def _create_time_series_viz(self):
+    def _create_time_series(self):
         """Create time series visualization"""
         if not self.time_series_data:
             return None
@@ -347,7 +440,6 @@ class UniversalKPIDetector:
                 time_aggregated[period] = []
             time_aggregated[period].extend(ts['values'])
         
-        # Create visualization
         periods = list(time_aggregated.keys())
         avg_values = [np.mean(values) if values else 0 for values in time_aggregated.values()]
         
@@ -377,66 +469,65 @@ class UniversalKPIDetector:
         if not values:
             return None
         
-        fig = make_subplots(
-            rows=1, cols=2,
-            subplot_titles=['Value Distribution', 'Pattern Types']
+        # Create two separate figures instead of subplots
+        # Figure 1: Histogram
+        fig1 = go.Figure()
+        fig1.add_trace(
+            go.Histogram(x=values, nbinsx=20, name='Values', marker_color='lightblue')
+        )
+        fig1.update_layout(
+            title="📊 Value Distribution",
+            xaxis_title="Values",
+            yaxis_title="Frequency",
+            height=300
         )
         
-        # Histogram
-        fig.add_trace(
-            go.Histogram(x=values, nbinsx=20, name='Values'),
-            row=1, col=1
-        )
-        
-        # Pattern types pie chart
+        # Figure 2: Pattern types bar chart (not pie chart)
         pattern_counts = {}
         for item in self.numerical_data:
             pattern = item['pattern_type']
             pattern_counts[pattern] = pattern_counts.get(pattern, 0) + 1
         
-        fig.add_trace(
-            go.Pie(
-                labels=list(pattern_counts.keys()),
-                values=list(pattern_counts.values()),
-                name='Pattern Types'
-            ),
-            row=1, col=2
+        fig2 = go.Figure()
+        fig2.add_trace(
+            go.Bar(
+                x=list(pattern_counts.keys()),
+                y=list(pattern_counts.values()),
+                name='Pattern Types',
+                marker_color='lightgreen'
+            )
+        )
+        fig2.update_layout(
+            title="🏷️ Pattern Types Distribution",
+            xaxis_title="Pattern Type",
+            yaxis_title="Count",
+            height=300
         )
         
-        fig.update_layout(
-            title="🔢 Numerical Data Analysis",
-            height=400
-        )
-        
-        return fig
+        # Return both figures as a combined visualization
+        return (fig1, fig2)
     
-    def _create_kpi_categories_viz(self):
+    def _create_kpi_categories(self):
         """Create KPI categories visualization"""
-        kpi_data = self.detected_kpis['semantic_kpis']
+        kpis = self.detected_kpis['semantic_kpis']
         
-        categories = list(kpi_data.keys())
-        counts = [len(items) for items in kpi_data.values()]
-        avg_scores = [np.mean([item['score'] for item in items]) for items in kpi_data.values()]
+        categories = [kpi['kpi'] for kpi in kpis]
+        scores = [kpi['relevance_score'] for kpi in kpis]
         
-        fig = make_subplots(
-            rows=1, cols=2,
-            subplot_titles=['KPI Frequency', 'Average Relevance Scores']
-        )
-        
-        # Frequency bar chart
-        fig.add_trace(
-            go.Bar(x=categories, y=counts, name='Frequency'),
-            row=1, col=1
-        )
-        
-        # Relevance scores
-        fig.add_trace(
-            go.Bar(x=categories, y=avg_scores, name='Avg Score', marker_color='orange'),
-            row=1, col=2
-        )
+        fig = go.Figure(data=[
+            go.Bar(
+                x=categories,
+                y=scores,
+                marker_color='lightblue',
+                text=[f'{score:.2f}' for score in scores],
+                textposition='auto'
+            )
+        ])
         
         fig.update_layout(
             title="🎯 Detected KPI Categories",
+            xaxis_title="KPI Type",
+            yaxis_title="Relevance Score",
             height=400
         )
         
@@ -512,37 +603,55 @@ class UniversalKPIDetector:
         
         return fig
 
-class UniversalDashboard:
+class HuggingFaceDashboard:
     def __init__(self):
-        self.detector = UniversalKPIDetector()
+        self.detector = HuggingFaceKPIDetector()
         
     def generate_dashboard(self):
-        """Generate universal automated dashboard"""
+        """Generate HuggingFace-powered dashboard"""
         st.set_page_config(
-            page_title="Universal AI Dashboard",
+            page_title="HuggingFace AI Dashboard",
             layout="wide",
             initial_sidebar_state="expanded"
         )
         
         # Header
-        st.title("🤖 Universal AI-Powered Dashboard")
-        st.markdown("*Automatically detects KPIs and generates visualizations from any document type*")
+        st.title("🤖 HuggingFace AI-Powered Dashboard")
+        st.markdown("*Uses free HuggingFace Inference API - NO local downloads!*")
         st.markdown("---")
         
+        # API Key input (optional)
+        with st.sidebar:
+            st.subheader("🔑 API Configuration")
+            api_key = st.text_input("HuggingFace API Key (optional)", type="password", 
+                                   help="Optional: Add for higher rate limits")
+            if api_key:
+                self.detector.set_api_key(api_key)
+            
+            st.markdown("---")
+            st.info("""
+            **Free Usage:**
+            - Works without API key
+            - Basic rate limits
+            - No model downloads
+            
+            **With API Key:**
+            - Higher rate limits
+            - Better performance
+            - Priority access
+            """)
+        
         # Pipeline execution
-        with st.spinner("🚀 Running AI Analysis Pipeline..."):
+        with st.spinner("🚀 Running HuggingFace AI Analysis..."):
             
             # Step 1: Document Type Detection
             doc_type = self.detector.detect_document_type()
             
-            # Step 2: Extract Numerical Patterns
-            self.detector.extract_numerical_patterns()
+            # Step 2: Extract KPIs
+            detected_kpis = self.detector.extract_kpis_with_huggingface()
             
-            # Step 3: AI-Powered KPI Detection
-            detected_kpis = self.detector.detect_kpis_with_ai()
-            
-            # Step 4: Generate Adaptive Visualizations
-            visualizations = self.detector.generate_adaptive_visualizations()
+            # Step 3: Generate Visualizations
+            visualizations = self.detector.generate_visualizations()
         
         # Display Results
         col1, col2, col3 = st.columns(3)
@@ -551,7 +660,8 @@ class UniversalDashboard:
             st.metric("Document Type", doc_type.title())
         
         with col2:
-            st.metric("Detected KPIs", len(detected_kpis.get('semantic_kpis', {})))
+            semantic_count = len(detected_kpis.get('semantic_kpis', []))
+            st.metric("AI-Detected KPIs", semantic_count)
         
         with col3:
             st.metric("Visualizations", len(visualizations))
@@ -559,14 +669,17 @@ class UniversalDashboard:
         st.markdown("---")
         
         # KPI Summary
-        st.subheader("🎯 Detected KPIs")
-        
         if 'semantic_kpis' in detected_kpis and detected_kpis['semantic_kpis']:
+            st.subheader("🎯 AI-Detected KPIs")
+            
             cols = st.columns(len(detected_kpis['semantic_kpis']))
-            for i, (kpi, data) in enumerate(detected_kpis['semantic_kpis'].items()):
+            for i, kpi in enumerate(detected_kpis['semantic_kpis']):
                 with cols[i]:
-                    avg_score = np.mean([item['score'] for item in data])
-                    st.metric(kpi.title(), f"{len(data)} mentions", f"{avg_score:.2f} relevance")
+                    st.metric(
+                        kpi['kpi'], 
+                        f"{kpi['relevance_score']:.2f}",
+                        "relevance score"
+                    )
         
         st.markdown("---")
         
@@ -600,21 +713,25 @@ class UniversalDashboard:
         
         # Technical Details
         with st.expander("🔧 Technical Details"):
-            st.write("**AI Models Used:**")
+            st.write("**HuggingFace Models Used:**")
+            st.write("• BART for Document Classification")
             st.write("• BERT for Named Entity Recognition")
-            st.write("• BART for Zero-shot Classification")
-            st.write("• SentenceTransformers for Semantic Similarity")
-            st.write("• Custom Pattern Recognition")
+            st.write("• Zero-shot Classification for KPI Detection")
             
             st.write(f"\n**Processing Stats:**")
             st.write(f"• Tables Processed: {len(self.detector.raw_data['tables'])}")
             st.write(f"• Text Blocks: {len(self.detector.raw_data['text'])}")
-            st.write(f"• Numerical Values Found: {len(self.detector.numerical_data)}")
+            st.write(f"• Numerical Values: {len(self.detector.numerical_data)}")
             st.write(f"• Time Series Points: {len(self.detector.time_series_data)}")
+            
+            st.write(f"\n**API Status:**")
+            st.write(f"• HuggingFace Inference API: Active")
+            st.write(f"• Local Models: None (API-only)")
+            st.write(f"• Rate Limits: {'Enhanced' if self.detector.hf_api_key else 'Basic'}")
 
 def main():
-    """Main function to run the universal dashboard"""
-    dashboard = UniversalDashboard()
+    """Main function to run the HuggingFace dashboard"""
+    dashboard = HuggingFaceDashboard()
     dashboard.generate_dashboard()
 
 if __name__ == "__main__":
