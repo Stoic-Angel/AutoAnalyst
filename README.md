@@ -1,70 +1,145 @@
-# Getting Started with Create React App
+# AI-Powered Automatic Data Analytics Website
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A fully offline, privacy-preserving, intelligent system that transforms static PDF documents into structured insights, computed KPIs, and interactive dashboards using AI, OCR, and automated analytics.
 
-## Available Scripts
+## 🚀 Overview
 
-In the project directory, you can run:
+The AI-Powered Automatic Data Analytics Website is a complete end-to-end system designed to extract, analyze, and visualize information from PDF documents without requiring any cloud services. The framework automates the entire analytics pipeline—PDF preprocessing, text/table extraction, KPI identification, statistical computation, and dashboard generation—executing completely on the user’s local machine to ensure confidentiality and security.
 
-### `npm start`
+This project demonstrates how artificial intelligence, document understanding, and automation can work together to enable real-time, domain-agnostic data analysis.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## 🔍 Key Features
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+Completely Offline & Privacy-Safe
+All processing runs locally—no data leaves the system.
 
-### `npm test`
+Automatic PDF Parsing
+Uses PyMuPDF for layout parsing and Tesseract OCR for text extraction in scanned/non-digital PDFs.
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+AI-Driven Interpretation
+Transformer-based local LLMs (via Ollama) interpret extracted text and automatically identify KPIs.
 
-### `npm run build`
+Automated Data Processing Pipeline
+KPI extraction, normalization, and computation using Pandas and NumPy.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+Dynamic Dashboard Generation
+Interactive charts and summaries built with Plotly, Matplotlib, and Streamlit.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+Domain Agnostic
+Works for finance, healthcare, education, HR, research, and general document analytics.
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+Modular Architecture
+Each stage (OCR, LLM analysis, KPI extraction, visualization) functions as an independent module.
 
-### `npm run eject`
+## 🛠️ Tech Stack
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+Languages & Frameworks:
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+Python
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+Streamlit
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+JavaScript (optional, for UI enhancements)
 
-## Learn More
+AI & NLP:
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+Transformer-based LLMs via Ollama
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+Tesseract OCR
 
-### Code Splitting
+PyMuPDF
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+Data Processing:
 
-### Analyzing the Bundle Size
+Pandas
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+NumPy
 
-### Making a Progressive Web App
+Visualization:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+Plotly
 
-### Advanced Configuration
+Matplotlib
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+## 📥 Installation
 
-### Deployment
+1. Clone the Repository
+git clone https://github.com/your-username/your-repo-name.git
+cd your-repo-name
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+2. Create a Virtual Environment
+python -m venv venv
+source venv/bin/activate       # Mac/Linux
+venv\Scripts\activate          # Windows
 
-### `npm run build` fails to minify
+3. Install Dependencies
+pip install -r requirements.txt
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+4. Install OCR & LLM Tools
+
+Install Tesseract → https://github.com/tesseract-ocr/tesseract
+
+Install Ollama → https://ollama.com/download
+
+Pull your chosen LLM:
+
+ollama pull llama3
+
+## ▶️ Usage
+Run the Website
+streamlit run app.py
+
+Steps
+
+Upload any PDF document.
+
+The system extracts text, tables, and KPIs automatically.
+
+It processes the data and performs statistical analysis.
+
+An interactive dashboard is generated instantly.
+
+## 📊 Output Dashboard Includes
+
+KPI summaries
+
+Bar charts, line charts, pie charts
+
+Statistical breakdowns
+
+Data tables and extracted insights
+
+📁 Project Structure
+├── app.py  
+├── modules/
+│   ├── pdf_parser.py
+│   ├── ocr_engine.py
+│   ├── kpi_extractor.py
+│   ├── data_processor.py
+│   ├── dashboard_generator.py
+├── assets/
+├── requirements.txt
+└── README.md
+
+## 🧪 Testing
+
+Run unit tests:
+
+pytest
+
+## 🌐 Applications
+
+Finance – Invoice analysis, financial reports
+
+Healthcare – Medical record analytics
+
+Education – Academic report analysis
+
+HR – Resume/KPI extraction
+
+Research – Paper summarization & data extraction
+
+## 🤝 Contributing
+
+Contributions are welcome!
+Feel free to submit issues or pull requests.
