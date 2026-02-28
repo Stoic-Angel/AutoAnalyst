@@ -28,7 +28,7 @@ class HuggingFaceKPIDetector:
         
         # HuggingFace API configuration
         self.hf_api_key = None  # Optional - works without key for basic usage
-        self.api_base = "https://api-inference.huggingface.co"
+        self.api_base = "https://router.huggingface.co"
         
         # Initialize data structures
         self.detected_kpis = {}
