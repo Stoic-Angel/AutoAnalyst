@@ -90,10 +90,11 @@ class HuggingFaceKPIDetector:
         
         # Document type candidates
         candidate_labels = [
-            "financial report", "sales report", "marketing analysis", 
+            "financial report", "sales report", "marketing analysis",
             "operational report", "research report", "performance metrics",
             "annual report", "quarterly earnings", "survey results",
-            "customer analytics", "business intelligence", "project report"
+            "customer analytics", "business intelligence", "project report",
+            "streaming or catalog analytics", "media licensing report",
         ]
         
         payload = {
@@ -123,12 +124,10 @@ class HuggingFaceKPIDetector:
             return "sales report"
         elif any(word in text_lower for word in ['marketing', 'campaign', 'engagement', 'advertising']):
             return "marketing analysis"
-        elif any(word in text_lower for word in ['operational', 'operations', 'efficiency', 'productivity']):
-            return "operational report"
-        elif any(word in text_lower for word in ['research', 'study', 'analysis', 'findings']):
+        elif any(word in text_lower for word in ['streaming', 'catalog', 'netflix', 'title', 'movie', 'series', 'viewership', 'subscriber']):
+            return "streaming or catalog analytics"
+        elif any(word in text_lower for word in ['research', 'study', 'findings', 'survey']):
             return "research report"
-        else:
-            return "business report"
     
     def extract_numerical_patterns(self):
         """Extract numerical data patterns using regex and NLP"""
@@ -285,7 +284,11 @@ class HuggingFaceKPIDetector:
             'operational report': [
                 'efficiency metrics', 'productivity rates', 'utilization rates',
                 'operational costs', 'process improvements', 'quality metrics'
-            ]
+            ],
+            'streaming or catalog analytics': [
+                'catalog size', 'title availability', 'audience engagement',
+                'regional performance', 'content spend', 'content performance'
+            ],
         }
         
         # Get relevant KPI categories
@@ -327,7 +330,12 @@ class HuggingFaceKPIDetector:
                     {'kpi': 'Campaign Performance', 'relevance_score': 0.9, 'category': 'fallback'},
                     {'kpi': 'Engagement Metrics', 'relevance_score': 0.8, 'category': 'fallback'},
                     {'kpi': 'ROI Analysis', 'relevance_score': 0.7, 'category': 'fallback'}
-                ]
+                ],
+                'streaming or catalog analytics': [
+                    {'kpi': 'Catalog Reach', 'relevance_score': 0.9, 'category': 'fallback'},
+                    {'kpi': 'Title Performance', 'relevance_score': 0.8, 'category': 'fallback'},
+                    {'kpi': 'Regional Mix', 'relevance_score': 0.7, 'category': 'fallback'}
+                ],
             }
             return fallback_kpis.get(self.document_type, [
                 {'kpi': 'Performance Metrics', 'relevance_score': 0.8, 'category': 'fallback'},

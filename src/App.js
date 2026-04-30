@@ -292,7 +292,7 @@ function SectionHeader({ title, subtitle, icon }) {
   );
 }
 
-function KPICard({ label, value, change, changeType, status, prefix = "", suffix = "", sparkline, description }) {
+function KPICard({ label, value, change, changeType, status, prefix = "", suffix = "", sparkline, description, formatHint }) {
   const isPositive = changeType === "positive" || (typeof change === "number" && change > 0);
   const isNegative = changeType === "negative" || (typeof change === "number" && change < 0);
   
@@ -320,7 +320,7 @@ function KPICard({ label, value, change, changeType, status, prefix = "", suffix
       <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-1 truncate">{label}</p>
       <div className="flex items-end justify-between gap-2">
         <p className="text-2xl font-bold truncate">
-          {prefix}{typeof value === "number" ? formatNumber(value) : value}{suffix}
+          {prefix}{typeof value === "number" ? formatNumber(value, formatHint) : value}{suffix}
         </p>
         {sparklineData && (
           <div className="w-16 h-8 flex-shrink-0">
@@ -328,7 +328,7 @@ function KPICard({ label, value, change, changeType, status, prefix = "", suffix
           </div>
         )}
       </div>
-      {change !== undefined && (
+      {change != null && (
         <div className={`flex items-center gap-1 mt-2 text-sm ${isPositive ? "text-emerald-400" : isNegative ? "text-rose-400" : "text-slate-400"}`}>
           <span>{isPositive ? "↑" : isNegative ? "↓" : "→"}</span>
           <span>{typeof change === "number" ? `${Math.abs(change).toFixed(1)}%` : change}</span>
@@ -548,25 +548,34 @@ function DataTable({ data, searchTerm, onSearchChange }) {
 }
 
 function StatCard({ column, stats }) {
+  const isYearAxis = /\byear\b/i.test(column) || stats.median != null;
   return (
     <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
       <h4 className="text-sm font-medium text-slate-400 truncate mb-3">{column}</h4>
       <div className="grid grid-cols-2 gap-3">
         <div>
           <span className="text-xs text-slate-500">Mean</span>
-          <p className="font-semibold text-white">{formatNumber(stats.mean)}</p>
+          <p className="font-semibold text-white">{formatNumber(stats.mean, isYearAxis ? "year" : null)}</p>
         </div>
-        <div>
-          <span className="text-xs text-slate-500">Sum</span>
-          <p className="font-semibold text-white">{formatNumber(stats.sum)}</p>
-        </div>
+        {stats.sum != null && (
+          <div>
+            <span className="text-xs text-slate-500">Sum</span>
+            <p className="font-semibold text-white">{formatNumber(stats.sum)}</p>
+          </div>
+        )}
+        {stats.median != null && (
+          <div>
+            <span className="text-xs text-slate-500">Median</span>
+            <p className="font-semibold text-white">{formatNumber(stats.median, "year")}</p>
+          </div>
+        )}
         <div>
           <span className="text-xs text-slate-500">Min</span>
-          <p className="font-semibold text-emerald-400">{formatNumber(stats.min)}</p>
+          <p className="font-semibold text-emerald-400">{formatNumber(stats.min, isYearAxis ? "year" : null)}</p>
         </div>
         <div>
           <span className="text-xs text-slate-500">Max</span>
-          <p className="font-semibold text-rose-400">{formatNumber(stats.max)}</p>
+          <p className="font-semibold text-rose-400">{formatNumber(stats.max, isYearAxis ? "year" : null)}</p>
         </div>
       </div>
     </div>
@@ -582,8 +591,11 @@ const sparklineOptions = {
   scales: { x: { display: false }, y: { display: false } }
 };
 
-function formatNumber(num) {
+function formatNumber(num, hint) {
   if (num === null || num === undefined || isNaN(num)) return "—";
+  if (hint === "year") {
+    return String(Math.round(num));
+  }
   if (Math.abs(num) >= 1e9) return (num / 1e9).toFixed(1) + "B";
   if (Math.abs(num) >= 1e6) return (num / 1e6).toFixed(1) + "M";
   if (Math.abs(num) >= 1e3) return (num / 1e3).toFixed(1) + "K";
@@ -593,6 +605,10 @@ function formatNumber(num) {
 
 function formatCell(value) {
   if (value === null || value === undefined) return "—";
-  if (typeof value === "number") return formatNumber(value);
+  if (typeof value === "number") {
+    if (value >= 1800 && value <= 2105 && Number.isFinite(value))
+      return String(Math.round(value));
+    return formatNumber(value);
+  }
   return String(value).slice(0, 50);
 }
